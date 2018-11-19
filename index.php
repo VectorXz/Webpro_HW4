@@ -1,9 +1,19 @@
 <?php
 session_start();
 
+if(isset($_GET["action"]) && $_GET["action"] == "logout") {
+    session_destroy();
+    header("Location: index.php");
+}
+
 function error_box($text) {
     echo '<div class="alert alert-danger" role="alert">'.$text.'</div>';
 }
+
+function ok_box($text) {
+    echo '<div class="alert alert-success" role="alert">'.$text.'</div>';
+}
+
 ?>
 <DOCTYPE html>
 <head>
@@ -43,19 +53,88 @@ body {
     </div>
     <?php if(isset($_SESSION["username"]) && $_SESSION["username"] != "") { ?>
     <div class="row">
-        <div class="col-sm">
-            Welcome! <?php echo $_SESSION["username"]; ?>
+        <div class="col-sm-3">
+            <div class="card bg-light mb-3">
+                <div class="card-header">User Panel</div>
+                <div class="card-body">
+                    <h5 class="card-title">Welcome! <?php echo $_SESSION["username"]; ?></h5>
+                    <p class="card-text"><a class="btn btn-danger btn-sm" href="index.php?action=logout" role="button">LOGOUT</a></p>
+                </div>
+            </div>
         </div>
         <div class="col-sm">
-            Upload file!
+            <div class="card bg-light mb-3">
+                <div class="card-header">Upload image</div>
+                <div class="card-body">
+                    <h5 class="card-title">You can upload image below.</h5>
+                    <p class="card-text">
+                    <?php
+                        if($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["action"]) && $_POST["action"] == "upload") {
+                            if(isset($_FILES["file"]) && ($_FILES["file"]["name"][0] != "")) {
+                                echo '<pre>';
+                                var_dump($_FILES["file"]);
+                                echo '</pre>';
+                            } else {
+                                error_box("Please upload some file!");
+                            }
+                        }
+                    ?>
+                        <form action="index.php" method="post" enctype="multipart/form-data">
+                            <input type="file" name="file[]" id="file" multiple /><br />
+                            <input type="hidden" name="action" value="upload"><br>
+                            <input type="submit" name="submit" value="Upload!" />
+                        </form>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm">
+            Files in system
         </div>
     </div>
     <?php } else { ?>
     <div class="row">
         <div class="col-sm">
-            <div class="alert alert-primary" role="alert">
-                LOGIN
-            </div>
+            <?php
+                if($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST["action"]) && $_POST["action"] == "login") {
+                    if(isset($_POST["username"]) && $_POST["username"] != "") {
+                        if(isset($_POST["password"]) && $_POST["password"] != "") {
+                            $file = "users.json";
+                            $usersfile = fopen($file, "r") or die("Unable to open file!");
+                            $contents = fread($usersfile, filesize($file));
+                            fclose($usersfile);
+                            
+                            $users = json_decode($contents, TRUE);
+
+                            $check = in_array($_POST["username"], array_column($users,"username"));
+                            if($check) {
+                                $index = array_search($_POST["username"], array_column($users,"username"));
+                                
+                                $password = $users[$index]["password"];
+
+                                if(password_verify($_POST["password"],$password)) {
+                                    $_SESSION["username"] = $_POST["username"];
+                                    header("Location: index.php");
+                                } else {
+                                    error_box("Password is invalid!");
+                                }
+                            } else {
+                                error_box("Username not found. Please register first.");
+                            }
+                        } else {
+                            error_box("Please fill in password.");
+                        }
+                    } else {
+                        error_box("Please fill in username.");
+                    }
+                } else {
+                    echo '<div class="alert alert-primary" role="alert">
+                    LOGIN
+                </div>';
+                }
+            ?>
             <div class="col-5 mx-auto">
             <form method="post" action="index.php">
                 <div class="form-group">
@@ -80,30 +159,43 @@ body {
                                 if(count(explode(" ",$_POST["fullname"])) > 1) {
                                     if(strpos(strtolower($_POST["username"]), "admin") === false) {
                                         if(strlen($_POST["password"]) >= 6) {
+
+                                            //OPEN FILE AND READ ALL DATA KEEP IN $contents
                                             $file = "users.json";
-                                            $usersfile = fopen($file, "w+") or die("Unable to open file!");
-                                            if(filesize($file) > 0) {
-                                                echo "adding user";
-                                                $contents = fread($usersfile,filesize($file));
+                                            $usersfile = fopen($file, "r") or die("Unable to open file!");
+                                            $contents = fread($usersfile, filesize($file));
+                                            fclose($usersfile);
+
+                                            //Decode the json from file!
+                                            $users = json_decode($contents, TRUE);
+
+                                            //check whether this username is already exists?
+                                            $check = in_array($_POST["username"], array_column($users,"username"));
+                                            if(!$check) {
+                                                //if not exists so open file and write new user.
+                                                $usersfile = fopen($file, "w+") or die("Unable to open file!");
+                                                $name = explode(" ",$_POST["fullname"]);
+                                                $thisuser["name"] = $name[0];
+                                                $thisuser["surname"] = $name[1];
+                                                $thisuser["username"] = $_POST["username"];
+                                                $thisuser["password"] = password_hash($_POST["password"], PASSWORD_DEFAULT);
+                                                array_push($users,$thisuser);
+
+                                                $writeToFile = json_encode($users);
+
+                                                $write = fwrite($usersfile, $writeToFile);
+                                                fclose($usersfile);
+
+                                                if($write) {
+                                                    ok_box("Your account <strong>".$_POST["username"]."</strong> is registered! You can now login!");
+                                                } else {
+                                                    error_box("There is some problem with the system, please contact admin.");
+                                                }
+
                                             } else {
-                                                $contents = json_encode(array());
+                                                error_box("Username is already exists!");
                                             }
                                             
-
-                                            $users = json_decode($contents, TRUE);
-                                            $name = explode(" ",$_POST["fullname"]);
-                                            $thisuser["name"] = $name[0];
-                                            $thisuser["surname"] = $name[1];
-                                            $thisuser["username"] = $_POST["username"];
-                                            $thisuser["password"] = password_hash($_POST["password"], PASSWORD_DEFAULT);
-                                            array_push($users,$thisuser);
-
-                                            var_dump($users);
-
-                                            $writeToFile = json_encode($users);
-
-                                            fwrite($usersfile, $writeToFile);
-                                            fclose($usersfile);
                                         } else {
                                             error_box("Please use 6 or more character in your password.");
                                         }
